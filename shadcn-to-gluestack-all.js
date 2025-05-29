@@ -34,11 +34,17 @@ module.exports = function (fileInfo, api) {
             return `web:${cls}`;
           }
           if (cls.includes('scrollbar')) return '';
-          if (cls === 'aspect-ratio') return '';
+          if (cls === 'aspect-ratio') return null;
           return cls;
         })
-        .filter(Boolean)
-        .join(' ');
+        .filter(Boolean);
+
+      // Add flex-row if flex is present and neither flex-row nor flex-col exists
+      if (classes.includes('flex') && !classes.includes('row') && !classes.includes('col')) {
+        classes.push('flex-row');
+      }
+
+      classes = classes.filter(Boolean).join(' ');
       return classes ? j.literal(classes) : null;
     }
     return classNameValue;
@@ -110,10 +116,11 @@ module.exports = function (fileInfo, api) {
             child.openingElement.name.name.match(/^[A-Z]/)
           ) {
             return j.jsxElement(
-              j.jsxOpeningElement(j.jsxIdentifier('ButtonIcon')),
+              j.jsxOpeningElement(j.jsxIdentifier('ButtonIcon'), [
+                j.jsxAttribute(j.jsxIdentifier('as'), j.jsxExpressionContainer(j.jsxIdentifier(child.openingElement.name.name))),
+              ]),
               j.jsxClosingElement(j.jsxIdentifier('ButtonIcon')),
-              [],
-              [j.jsxAttribute(j.jsxIdentifier('as'), j.jsxExpressionContainer(j.jsxIdentifier(child.openingElement.name.name)))]
+              []
             );
           }
           return child;
