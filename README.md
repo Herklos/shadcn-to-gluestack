@@ -3,7 +3,7 @@ For now it's only [tailwind](https://tailwindcss.com/) to [gluestack-ui](https:/
 
 # Usage
 ## With [v0](https://v0.dev/)
-### Project instructions
+Fill the following guidelines in your `Project instructions`
 ```
 This website optimized for both mobile and web experience.
 
@@ -11,7 +11,7 @@ You are NOT ALLOWED to use any shadcn component.
 Code it using tailwind ONLY.
 ```
 
-### Setup
+## Setup
 ```
 npm install -g jscodeshift
 npm create gluestack@latest
