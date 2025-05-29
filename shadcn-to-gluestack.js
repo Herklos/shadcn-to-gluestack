@@ -30,6 +30,9 @@ module.exports = function (fileInfo, api) {
       let classes = classNameValue.value.split(' ').filter(Boolean);
       classes = classes
         .map(cls => {
+          if (cls === 'inline-flex') {
+            return ['flex', 'flex-row'];
+          }
           if (cls.match(/^(hover|focus|active|visited|disabled|first|last|odd|even):/)) {
             return `web:${cls}`;
           }
