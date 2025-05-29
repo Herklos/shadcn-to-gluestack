@@ -20,7 +20,13 @@ npm create gluestack@latest
 ### Convert
 Download the tailwind / shadcn components into `src` directory.
 ```
-jscodeshift -t shadcn-to-gluestack-all.js ./src --extensions=ts,tsx --parser=tsx
+jscodeshift -t shadcn-to-gluestack.js ./src --extensions=ts,tsx --parser=tsx
 ```
 
 Add `lucide-react-native` to `package.json`
+
+
+
+
+
+Thanks [Grok](https://grok.com) for your help ;)
