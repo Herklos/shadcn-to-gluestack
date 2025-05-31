@@ -13,11 +13,14 @@ module.exports = function (fileInfo, api) {
     return children
       .map(child => {
         if (child.type === 'JSXText' && child.value.trim() !== '') {
-          return j.jsxElement(
-            j.jsxOpeningElement(j.jsxIdentifier(wrapperName)),
-            j.jsxClosingElement(j.jsxIdentifier(wrapperName)),
-            [child]
-          );
+          const cleanedValue = child.value.replace(/[()[\]]/g, '').trim();
+          if (cleanedValue) {
+            return j.jsxElement(
+              j.jsxOpeningElement(j.jsxIdentifier(wrapperName)),
+              j.jsxClosingElement(j.jsxIdentifier(wrapperName)),
+              [j.jsxText(cleanedValue)]
+            );
+          }
         }
         return child;
       })
