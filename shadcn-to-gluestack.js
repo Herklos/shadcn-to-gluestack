@@ -79,12 +79,12 @@ module.exports = function (fileInfo, api) {
     }
   });
 
-  // Wrap text nodes in <Text> except in ButtonText, Input, Text, or Heading
+  // Wrap text nodes in <Text> except in ButtonText, Input, InputField, Text, or Heading
   root.find(j.JSXElement).forEach(path => {
     const { openingElement } = path.node;
     if (!openingElement || !openingElement.name || openingElement.name.type !== 'JSXIdentifier') return;
     const parentName = openingElement.name.name;
-    if (['ButtonText', 'Input', 'Text', 'Heading'].includes(parentName)) return;
+    if (['ButtonText', 'Input', 'InputField', 'Text', 'Heading'].includes(parentName)) return;
     if (!path.node.children) path.node.children = [];
     path.node.children = wrapTextChildren(path.node.children, 'Text');
   });
@@ -142,6 +142,9 @@ module.exports = function (fileInfo, api) {
       case 'p':
       case 'span':
         newTagName = 'Text';
+        break;
+      case 'input':
+        newTagName = 'Input';
         break;
     }
 
@@ -465,6 +468,8 @@ module.exports = function (fileInfo, api) {
     { name: 'ButtonText', module: '@/components/ui/button' },
     { name: 'ButtonIcon', module: '@/components/ui/button' },
     { name: 'Pressable', module: '@/components/ui/pressable' },
+    { name: 'Input', module: '@/components/ui/input' },
+    { name: 'InputField', module: '@/components/ui/input' },
   ];
 
   gluestackImports.forEach(({ name, module }) => {
