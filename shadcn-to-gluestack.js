@@ -8,10 +8,20 @@ module.exports = function (fileInfo, api) {
   const root = j(fileInfo.source);
 
   // Helper to wrap text children in a specified component
-  function wrapTextChildren(children, wrapperName) {
+  function wrapTextChildren(children, wrapperName, parentName) {
     if (!children || !Array.isArray(children)) return [];
+    // Skip wrapping if parent is Text or Heading
+    if (['Text', 'Heading'].includes(parentName)) return children;
     return children
       .map(child => {
+        // Skip if child is already a Text or Heading element
+        if (
+          child.type === 'JSXElement' &&
+          child.openingElement.name.type === 'JSXIdentifier' &&
+          ['Text', 'Heading'].includes(child.openingElement.name.name)
+        ) {
+          return child;
+        }
         if (child.type === 'JSXText' && child.value.trim() !== '') {
           const cleanedValue = child.value.replace(/[()[\]]/g, '').trim();
           if (cleanedValue) {
@@ -79,14 +89,14 @@ module.exports = function (fileInfo, api) {
     }
   });
 
-  // Wrap text nodes in <Text> except in ButtonText, Input, InputField, Text, or Heading
+  // Wrap text nodes in <Text> except in ButtonText, Input, Text, or Heading
   root.find(j.JSXElement).forEach(path => {
     const { openingElement } = path.node;
     if (!openingElement || !openingElement.name || openingElement.name.type !== 'JSXIdentifier') return;
     const parentName = openingElement.name.name;
-    if (['ButtonText', 'Input', 'InputField', 'Text', 'Heading'].includes(parentName)) return;
+    if (['ButtonText', 'Input', 'Text', 'Heading'].includes(parentName)) return;
     if (!path.node.children) path.node.children = [];
-    path.node.children = wrapTextChildren(path.node.children, 'Text');
+    path.node.children = wrapTextChildren(path.node.children, 'Text', parentName);
   });
 
   // Convert HTML elements to gluestack equivalents and handle onClick
@@ -115,7 +125,7 @@ module.exports = function (fileInfo, api) {
         newTagName = 'Button';
         isButton = true;
         if (!path.node.children) path.node.children = [];
-        path.node.children = wrapTextChildren(path.node.children, 'ButtonText').map(child => {
+        path.node.children = wrapTextChildren(path.node.children, 'ButtonText', tagName).map(child => {
           if (
             child.type === 'JSXElement' &&
             child.openingElement.name.type === 'JSXIdentifier' &&
@@ -132,19 +142,32 @@ module.exports = function (fileInfo, api) {
           return child;
         });
         break;
+      case 'input':
+        newTagName = 'Input';
+        const inputFieldPropsNames = ['placeholder', 'name', 'value', 'onChangeText', 'secureTextEntry', 'keyboardType'];
+        const inputProps = openingElement.attributes.filter(attr => attr.name && !inputFieldPropsNames.includes(attr.name.name));
+        const inputFieldProps = openingElement.attributes.filter(attr => attr.name && inputFieldPropsNames.includes(attr.name.name));
+        const inputField = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('InputField'), inputFieldProps),
+          j.jsxClosingElement(j.jsxIdentifier('InputField')),
+          []
+        );
+        openingElement.attributes = inputProps;
+        path.node.children = [inputField];
+        break;
       case 'h1':
       case 'h2':
       case 'h3':
       case 'h4':
         newTagName = 'Heading';
         openingElement.attributes = updateClassNameAttributes(openingElement.attributes, 'text-2xl font-bold');
+        // Avoid wrapping children in Text for Heading
+        path.node.children = path.node.children || [];
         break;
       case 'p':
       case 'span':
         newTagName = 'Text';
-        break;
-      case 'input':
-        newTagName = 'Input';
+        path.node.children = wrapTextChildren(path.node.children, 'Text', tagName);
         break;
     }
 
@@ -176,7 +199,7 @@ module.exports = function (fileInfo, api) {
   // Button: Wrap text in <ButtonText>
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Button' } } }).forEach(path => {
     if (!path.node.children) path.node.children = [];
-    path.node.children = wrapTextChildren(path.node.children, 'ButtonText');
+    path.node.children = wrapTextChildren(path.node.children, 'ButtonText', 'Button');
   });
 
   // Input: Move specific props to <InputField>
@@ -265,13 +288,13 @@ module.exports = function (fileInfo, api) {
   // Alert: Wrap text in <AlertText>
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Alert' } } }).forEach(path => {
     if (!path.node.children) path.node.children = [];
-    path.node.children = wrapTextChildren(path.node.children, 'AlertText');
+    path.node.children = wrapTextChildren(path.node.children, 'AlertText', 'Alert');
   });
 
   // Badge: Wrap text in <BadgeText>
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Badge' } } }).forEach(path => {
     if (!path.node.children) path.node.children = [];
-    path.node.children = wrapTextChildren(path.node.children, 'BadgeText');
+    path.node.children = wrapTextChildren(path.node.children, 'BadgeText', 'Badge');
   });
 
   // Checkbox: Direct replacement
@@ -442,7 +465,7 @@ module.exports = function (fileInfo, api) {
   // Fab: Wrap text in <FabLabel>
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Fab' } } }).forEach(path => {
     if (!path.node.children) path.node.children = [];
-    path.node.children = wrapTextChildren(path.node.children, 'FabLabel');
+    path.node.children = wrapTextChildren(path.node.children, 'FabLabel', 'Fab');
   });
 
   // Breadcrumb: Direct replacement
@@ -462,14 +485,14 @@ module.exports = function (fileInfo, api) {
   // Add gluestack imports
   const gluestackImports = [
     { name: 'Box', module: '@/components/ui/box' },
-    { name: 'Text', module: '@/components/ui/text' },
-    { name: 'Heading', module: '@/components/ui/heading' },
-    { name: 'Button', module: '@/components/ui/button' },
-    { name: 'ButtonText', module: '@/components/ui/button' },
-    { name: 'ButtonIcon', module: '@/components/ui/button' },
-    { name: 'Pressable', module: '@/components/ui/pressable' },
-    { name: 'Input', module: '@/components/ui/input' },
-    { name: 'InputField', module: '@/components/ui/input' },
+    { name: 'Text', module: '@components/ui/text' },
+    { name: 'Heading', module: '@components/ui/heading' },
+    { name: 'Button', module: '@components/ui/button' },
+    { name: 'ButtonText', module: '@components/ui/button' },
+    { name: 'ButtonIcon', module: '@components/ui/button' },
+    { name: 'Pressable', module: '@components/ui/pressable' },
+    { name: 'Input', module: '@components/ui/input' },
+    { name: 'InputField', module: '@components/ui/input' },
   ];
 
   gluestackImports.forEach(({ name, module }) => {
