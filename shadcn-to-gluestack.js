@@ -79,7 +79,7 @@ module.exports = function (fileInfo, api) {
     return attributes;
   }
 
-  // Helper to merge className attributes from nested Text into parent Text
+  // Helper to merge className attributes from nested Text into parent
   function mergeClassNameAttributes(parentAttributes, childAttributes) {
     const parentClassName = parentAttributes.find(attr => attr.name && attr.name.name === 'className');
     const childClassName = childAttributes.find(attr => attr.name && attr.name.name === 'className');
@@ -113,6 +113,16 @@ module.exports = function (fileInfo, api) {
     path.node.children = wrapTextChildren(path.node.children, 'Text', parentName);
   });
 
+  // Collect Lucide icon names from imports
+  const lucideIconNames = new Set();
+  root.find(j.ImportDeclaration, { source: { value: 'lucide-react-native' } }).forEach(path => {
+    path.node.specifiers.forEach(specifier => {
+      if (specifier.type === 'ImportSpecifier' && specifier.local) {
+        lucideIconNames.add(specifier.local.name);
+      }
+    });
+  });
+
   // Convert HTML elements to gluestack equivalents and handle onClick
   root.find(j.JSXElement).forEach(path => {
     const { openingElement, closingElement } = path.node;
@@ -128,6 +138,24 @@ module.exports = function (fileInfo, api) {
     // Check for onClick attribute
     const onClickAttr = openingElement.attributes.find(attr => attr.name && attr.name.name === 'onClick');
     const hasOnClick = !!onClickAttr;
+
+    // Check if the element is a Lucide icon
+    if (lucideIconNames.has(tagName)) {
+      const iconAttributes = [
+        j.jsxAttribute(
+          j.jsxIdentifier('as'),
+          j.jsxExpressionContainer(j.jsxIdentifier(tagName))
+        ),
+        ...openingElement.attributes
+      ];
+      const iconElement = j.jsxElement(
+        j.jsxOpeningElement(j.jsxIdentifier('Icon'), iconAttributes, openingElement.selfClosing),
+        openingElement.selfClosing ? null : j.jsxClosingElement(j.jsxIdentifier('Icon')),
+        path.node.children || []
+      );
+      j(path).replaceWith(iconElement);
+      return;
+    }
 
     switch (tagName) {
       case 'div':
@@ -177,6 +205,8 @@ module.exports = function (fileInfo, api) {
       case 'h2':
       case 'h3':
       case 'h4':
+      case 'h5':
+      case 'h6':
         newTagName = 'Heading';
         openingElement.attributes = updateClassNameAttributes(openingElement.attributes, 'text-2xl font-bold');
         // Avoid wrapping children in Text for Heading
@@ -542,8 +572,10 @@ module.exports = function (fileInfo, api) {
   // Kbd: Direct replacement
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Kbd' } } });
 
-  // Remove nested <Text> within <Text>
-  root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Text' } } }).forEach(path => {
+  // Remove nested <Text> within <Text> or <Heading>
+  root.find(j.JSXElement, { 
+    openingElement: { name: { type: 'JSXIdentifier', name: name => ['Text', 'Heading'].includes(name) } }
+  }).forEach(path => {
     const parent = path.node;
     if (!parent.children) return;
     parent.children = parent.children.flatMap(child => {
@@ -579,6 +611,7 @@ module.exports = function (fileInfo, api) {
     { name: 'Pressable', module: '@/components/ui/pressable' },
     { name: 'Input', module: '@/components/ui/input' },
     { name: 'InputField', module: '@/components/ui/input' },
+    { name: 'Icon', module: '@/components/ui/icon' },
     { name: 'Select', module: '@/components/ui/select' },
     { name: 'SelectTrigger', module: '@/components/ui/select' },
     { name: 'SelectInput', module: '@/components/ui/select' },
