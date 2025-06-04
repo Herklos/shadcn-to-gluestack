@@ -10,15 +10,15 @@ module.exports = function (fileInfo, api) {
   // Helper to wrap text children in a specified component
   function wrapTextChildren(children, wrapperName, parentName) {
     if (!children || !Array.isArray(children)) return [];
-    // Skip wrapping if parent is Text or Heading
-    if (['Text', 'Heading'].includes(parentName)) return children;
+    // Skip wrapping if parent is Text, Heading, or SelectItem
+    if (['Text', 'Heading', 'SelectItem'].includes(parentName)) return children;
     return children
       .map(child => {
-        // Skip if child is already a Text or Heading element
+        // Skip if child is already a Text, Heading, or SelectItem element
         if (
           child.type === 'JSXElement' &&
           child.openingElement.name.type === 'JSXIdentifier' &&
-          ['Text', 'Heading'].includes(child.openingElement.name.name)
+          ['Text', 'Heading', 'SelectItem'].includes(child.openingElement.name.name)
         ) {
           return child;
         }
@@ -79,6 +79,20 @@ module.exports = function (fileInfo, api) {
     return attributes;
   }
 
+  // Helper to merge className attributes from nested Text into parent Text
+  function mergeClassNameAttributes(parentAttributes, childAttributes) {
+    const parentClassName = parentAttributes.find(attr => attr.name && attr.name.name === 'className');
+    const childClassName = childAttributes.find(attr => attr.name && attr.name.name === 'className');
+    if (parentClassName && childClassName && childClassName.value.type === 'StringLiteral') {
+      const parentClasses = parentClassName.value.type === 'StringLiteral' ? parentClassName.value.value : '';
+      const childClasses = childClassName.value.value;
+      parentClassName.value = j.literal(parentClasses ? `${parentClasses} ${childClasses}`.trim() : childClasses);
+    } else if (childClassName && !parentClassName && childClassName.value.type === 'StringLiteral') {
+      parentAttributes.push(j.jsxAttribute(j.jsxIdentifier('className'), j.literal(childClassName.value.value)));
+    }
+    return parentAttributes.filter(attr => attr.name && attr.name.name !== 'className' || attr.value);
+  }
+
   // Convert className attributes across all JSX elements
   root.find(j.JSXAttribute, { name: { name: 'className' } }).forEach(path => {
     const newValue = convertTailwindClasses(path.node.value);
@@ -89,12 +103,12 @@ module.exports = function (fileInfo, api) {
     }
   });
 
-  // Wrap text nodes in <Text> except in ButtonText, Input, Text, or Heading
+  // Wrap text nodes in <Text> except in ButtonText, Input, Text, Heading, or SelectItem
   root.find(j.JSXElement).forEach(path => {
     const { openingElement } = path.node;
     if (!openingElement || !openingElement.name || openingElement.name.type !== 'JSXIdentifier') return;
     const parentName = openingElement.name.name;
-    if (['ButtonText', 'Input', 'Text', 'Heading'].includes(parentName)) return;
+    if (['ButtonText', 'Input', 'Text', 'Heading', 'SelectItem'].includes(parentName)) return;
     if (!path.node.children) path.node.children = [];
     path.node.children = wrapTextChildren(path.node.children, 'Text', parentName);
   });
@@ -155,6 +169,10 @@ module.exports = function (fileInfo, api) {
         openingElement.attributes = inputProps;
         path.node.children = [inputField];
         break;
+      case 'label':
+        newTagName = 'Text';
+        path.node.children = wrapTextChildren(path.node.children, 'Text', tagName);
+        break;
       case 'h1':
       case 'h2':
       case 'h3':
@@ -168,6 +186,74 @@ module.exports = function (fileInfo, api) {
       case 'span':
         newTagName = 'Text';
         path.node.children = wrapTextChildren(path.node.children, 'Text', tagName);
+        break;
+      case 'select':
+        newTagName = 'Select';
+        // Transform <option> children to <SelectItem>
+        const selectItems = (path.node.children || [])
+          .filter(child => child.type === 'JSXElement' && child.openingElement.name.type === 'JSXIdentifier' && child.openingElement.name.name === 'option')
+          .map(option => {
+            const optionAttributes = option.openingElement.attributes || [];
+            const valueAttr = optionAttributes.find(attr => attr.name && attr.name.name === 'value');
+            const selectItemAttributes = valueAttr ? [j.jsxAttribute(j.jsxIdentifier('value'), valueAttr.value)] : [];
+            return j.jsxElement(
+              j.jsxOpeningElement(j.jsxIdentifier('SelectItem'), selectItemAttributes),
+              j.jsxClosingElement(j.jsxIdentifier('SelectItem')),
+              wrapTextChildren(option.children, 'Text', 'SelectItem')
+            );
+          });
+
+        // Build Gluestack Select structure
+        const selectTrigger = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectTrigger')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectTrigger')),
+          [
+            j.jsxElement(
+              j.jsxOpeningElement(j.jsxIdentifier('SelectInput')),
+              j.jsxClosingElement(j.jsxIdentifier('SelectInput')),
+              []
+            ),
+            j.jsxElement(
+              j.jsxOpeningElement(j.jsxIdentifier('SelectIcon'), [
+                j.jsxAttribute(j.jsxIdentifier('as'), j.jsxExpressionContainer(j.jsxIdentifier('ChevronDownIcon'))),
+              ]),
+              j.jsxClosingElement(j.jsxIdentifier('SelectIcon')),
+              []
+            ),
+          ]
+        );
+
+        const selectDragIndicator = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectDragIndicator')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectDragIndicator')),
+          []
+        );
+
+        const selectDragIndicatorWrapper = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectDragIndicatorWrapper')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectDragIndicatorWrapper')),
+          [selectDragIndicator]
+        );
+
+        const selectContent = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectContent')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectContent')),
+          [selectDragIndicatorWrapper, ...selectItems]
+        );
+
+        const selectBackdrop = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectBackdrop')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectBackdrop')),
+          []
+        );
+
+        const selectPortal = j.jsxElement(
+          j.jsxOpeningElement(j.jsxIdentifier('SelectPortal')),
+          j.jsxClosingElement(j.jsxIdentifier('SelectPortal')),
+          [selectBackdrop, selectContent]
+        );
+
+        path.node.children = [selectTrigger, selectPortal];
         break;
     }
 
@@ -216,27 +302,6 @@ module.exports = function (fileInfo, api) {
     );
     path.node.openingElement.attributes = inputProps;
     path.node.children = [inputField];
-  });
-
-  // Select: Transform to <Select> with <SelectTrigger>, <SelectInput>, <SelectContent>
-  root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Select' } } }).forEach(path => {
-    const selectTrigger = j.jsxElement(
-      j.jsxOpeningElement(j.jsxIdentifier('SelectTrigger')),
-      j.jsxClosingElement(j.jsxIdentifier('SelectTrigger')),
-      [
-        j.jsxElement(
-          j.jsxOpeningElement(j.jsxIdentifier('SelectInput')),
-          j.jsxClosingElement(j.jsxIdentifier('SelectInput')),
-          []
-        ),
-      ]
-    );
-    const selectContent = j.jsxElement(
-      j.jsxOpeningElement(j.jsxIdentifier('SelectContent')),
-      j.jsxClosingElement(j.jsxIdentifier('SelectContent')),
-      path.node.children || []
-    );
-    path.node.children = [selectTrigger, selectContent];
   });
 
   // Dialog (maps to AlertDialog): Add <AlertDialogBackdrop> and wrap children in <AlertDialogContent>
@@ -477,6 +542,27 @@ module.exports = function (fileInfo, api) {
   // Kbd: Direct replacement
   root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Kbd' } } });
 
+  // Remove nested <Text> within <Text>
+  root.find(j.JSXElement, { openingElement: { name: { type: 'JSXIdentifier', name: 'Text' } } }).forEach(path => {
+    const parent = path.node;
+    if (!parent.children) return;
+    parent.children = parent.children.flatMap(child => {
+      if (
+        child.type === 'JSXElement' &&
+        child.openingElement.name.type === 'JSXIdentifier' &&
+        child.openingElement.name.name === 'Text'
+      ) {
+        // Merge className attributes from child into parent
+        parent.openingElement.attributes = mergeClassNameAttributes(
+          parent.openingElement.attributes || [],
+          child.openingElement.attributes || []
+        );
+        return child.children || [];
+      }
+      return child;
+    });
+  });
+
   // Replace lucide-react with lucide-react-native
   root.find(j.ImportDeclaration, { source: { value: 'lucide-react' } }).forEach(path => {
     path.node.source.value = 'lucide-react-native';
@@ -485,14 +571,24 @@ module.exports = function (fileInfo, api) {
   // Add gluestack imports
   const gluestackImports = [
     { name: 'Box', module: '@/components/ui/box' },
-    { name: 'Text', module: '@components/ui/text' },
-    { name: 'Heading', module: '@components/ui/heading' },
-    { name: 'Button', module: '@components/ui/button' },
-    { name: 'ButtonText', module: '@components/ui/button' },
-    { name: 'ButtonIcon', module: '@components/ui/button' },
-    { name: 'Pressable', module: '@components/ui/pressable' },
-    { name: 'Input', module: '@components/ui/input' },
-    { name: 'InputField', module: '@components/ui/input' },
+    { name: 'Text', module: '@/components/ui/text' },
+    { name: 'Heading', module: '@/components/ui/heading' },
+    { name: 'Button', module: '@/components/ui/button' },
+    { name: 'ButtonText', module: '@/components/ui/button' },
+    { name: 'ButtonIcon', module: '@/components/ui/button' },
+    { name: 'Pressable', module: '@/components/ui/pressable' },
+    { name: 'Input', module: '@/components/ui/input' },
+    { name: 'InputField', module: '@/components/ui/input' },
+    { name: 'Select', module: '@/components/ui/select' },
+    { name: 'SelectTrigger', module: '@/components/ui/select' },
+    { name: 'SelectInput', module: '@/components/ui/select' },
+    { name: 'SelectIcon', module: '@/components/ui/select' },
+    { name: 'SelectPortal', module: '@/components/ui/select' },
+    { name: 'SelectBackdrop', module: '@/components/ui/select' },
+    { name: 'SelectContent', module: '@/components/ui/select' },
+    { name: 'SelectDragIndicatorWrapper', module: '@/components/ui/select' },
+    { name: 'SelectDragIndicator', module: '@/components/ui/select' },
+    { name: 'SelectItem', module: '@/components/ui/select' },
   ];
 
   gluestackImports.forEach(({ name, module }) => {
@@ -509,6 +605,23 @@ module.exports = function (fileInfo, api) {
       });
     }
   });
+
+  // Ensure ChevronDownIcon import from lucide-react-native
+  const lucideImport = root.find(j.ImportDeclaration, { source: { value: 'lucide-react-native' } });
+  if (lucideImport.size() === 0) {
+    const importDecl = j.importDeclaration(
+      [j.importSpecifier(j.identifier('ChevronDownIcon'))],
+      j.literal('lucide-react-native')
+    );
+    root.find(j.Program).get('body', 0).insertBefore(importDecl);
+  } else {
+    lucideImport.forEach(path => {
+      const hasChevronDownIcon = path.node.specifiers.some(spec => spec.local && spec.local.name === 'ChevronDownIcon');
+      if (!hasChevronDownIcon) {
+        path.node.specifiers.push(j.importSpecifier(j.identifier('ChevronDownIcon')));
+      }
+    });
+  }
 
   // Remove react-native imports
   root.find(j.ImportDeclaration, { source: { value: 'react-native' } }).remove();
