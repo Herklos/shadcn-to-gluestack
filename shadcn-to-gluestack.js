@@ -171,7 +171,7 @@ module.exports = function (fileInfo, api) {
           if (
             child.type === 'JSXElement' &&
             child.openingElement.name.type === 'JSXIdentifier' &&
-            child.openingElement.name.name.match(/^[A-Z]/)
+            lucideIconNames.has(child.openingElement.name.name) // Check if it's a Lucide icon
           ) {
             return j.jsxElement(
               j.jsxOpeningElement(j.jsxIdentifier('ButtonIcon'), [
@@ -181,7 +181,7 @@ module.exports = function (fileInfo, api) {
               []
             );
           }
-          return child;
+          return child; // Leave other JSX elements unchanged or already wrapped by wrapTextChildren
         });
         break;
       case 'input':
